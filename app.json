@@ -1,0 +1,58 @@
+{
+  "expo": {
+    "name": "Ariana",
+    "slug": "ariana-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0d0d0d"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "dev.ariana.mobile",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Ariana uses your camera for QR code scanning.",
+        "NSMicrophoneUsageDescription": "Ariana may use the microphone for voice input.",
+        "NSFaceIDUsageDescription": "Ariana uses Face ID for secure authentication."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0d0d0d"
+      },
+      "package": "dev.ariana.mobile",
+      "permissions": [
+        "android.permission.INTERNET",
+        "android.permission.CAMERA"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "scheme": ["ariana", "ariana-ide"],
+    "plugins": [
+      "expo-secure-store",
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#0d0d0d"
+        }
+      ],
+      "expo-web-browser"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "ariana-mobile"
+      }
+    }
+  }
+}
