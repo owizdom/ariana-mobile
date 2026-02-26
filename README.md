@@ -6,145 +6,169 @@ React Native / Expo mobile app for [Ariana](https://ariana.dev) — run parallel
 
 ## What We Built
 
-A full iOS + Android app that connects to the Ariana backend (`ariana.dev`) and gives you:
+A full iOS + Android app connecting to the Ariana backend (`ariana.dev`) with:
 
 | Feature | Details |
 |---------|---------|
-| **Auth** | Sign in with Anthropic API key or anonymously |
-| **Projects** | Browse all your projects, live via WebSocket |
-| **Agents list** | View all agents with real-time state (running / idle / provisioning) |
+| **Auth** | GitHub OAuth via in-app browser → JWT deep link |
+| **Projects** | Live list via WebSocket, tap to drill into project agents |
+| **Agents list** | All agents with real-time state (running / idle / provisioning) + search + filter |
 | **Agent chat** | Send prompts, see responses, tool calls, git commits — all streaming live |
-| **Remote desktop** | WebView to Moonlight/Sunshine desktop stream from the VPS |
-| **Create agent** | Launch a new agent on a Hetzner VPS with machine size selection |
+| **Remote desktop** | WebView to Moonlight/Sunshine stream on the agent's VPS |
+| **Create agent** | Launch new agent on a Hetzner VPS, pick branch |
 | **Profile** | Account info, sign out |
 | **App Store ready** | EAS build config for iOS App Store + Google Play |
 
-### Architecture
+---
+
+## Project Structure
 
 ```
 ariana-mobile/
-├── App.tsx                         Root — hydration + WS connect
-├── src/
-│   ├── config.ts                   API_URL, WS_URL
-│   ├── navigation/index.tsx        React Navigation (stack + bottom tabs)
-│   ├── services/
-│   │   ├── websocket.service.ts    Persistent WS (ported 1:1 from desktop)
-│   │   ├── websocket-protocol.ts   Protocol types (shared with backend)
-│   │   └── api.service.ts          REST calls (auth, projects, agents)
-│   ├── stores/
-│   │   ├── useAppStore.ts          User, token, model, drafts (persisted)
-│   │   ├── useAgentEventsStore.ts  Real-time chat events (WS subscriptions)
-│   │   ├── useAgentsListStore.ts   Live agents list (WS)
-│   │   └── useProjectsStore.ts     Live projects list (WS)
-│   ├── screens/
-│   │   ├── Auth/AuthScreen.tsx     Login screen
-│   │   ├── Dashboard/
-│   │   │   ├── DashboardScreen.tsx Projects tab
-│   │   │   ├── AgentsScreen.tsx    All agents tab (search + filter)
-│   │   │   └── ProjectScreen.tsx   Agents for a project
-│   │   ├── Agent/AgentScreen.tsx   Full chat + prompt input + stop/desktop
-│   │   ├── CreateAgent/            Launch new agent (machine, branch, key)
-│   │   ├── Streaming/              Remote desktop (WebView → Moonlight)
-│   │   └── Profile/ProfileScreen.tsx
-│   ├── components/
-│   │   ├── agent/AgentCard.tsx     Agent list item
-│   │   ├── common/ConnectionBadge  WS status indicator
-│   │   └── terminal/EventItem.tsx  Chat bubble for each event type
-│   ├── types/index.ts              All TypeScript types (matches backend)
-│   └── utils/
-│       ├── theme.ts                Colors, spacing, fonts
-│       └── agentState.ts           State → color/label helpers
+├── App.tsx                              Root — hydration + WS connect
+├── index.js                             Expo entry point
+├── app.json                             Expo config (schemes: ariana + ariana-ide)
+├── eas.json                             EAS build/submit profiles
+├── babel.config.js
+├── tsconfig.json
+└── src/
+    ├── config.ts                        API_URL, WS_URL
+    ├── navigation/index.tsx             React Navigation (native stack + bottom tabs)
+    ├── services/
+    │   ├── websocket.service.ts         Persistent WS — ported 1:1 from desktop app
+    │   ├── websocket-protocol.ts        Protocol types — shared with Ariana backend
+    │   └── api.service.ts               REST calls (auth, projects, agents)
+    ├── stores/
+    │   ├── useAppStore.ts               User, token, model, drafts (AsyncStorage persist)
+    │   ├── useAgentEventsStore.ts       Real-time chat events (WS subscriptions)
+    │   ├── useAgentsListStore.ts        Live agents list (WS)
+    │   └── useProjectsStore.ts          Live projects list (WS)
+    ├── screens/
+    │   ├── Auth/AuthScreen.tsx          GitHub OAuth login + token paste fallback
+    │   ├── Dashboard/
+    │   │   ├── DashboardScreen.tsx      Projects tab
+    │   │   ├── AgentsScreen.tsx         All agents (search + filter)
+    │   │   └── ProjectScreen.tsx        Agents for a single project
+    │   ├── Agent/AgentScreen.tsx        Chat + prompt input + stop + desktop link
+    │   ├── CreateAgent/                 Launch new agent (branch, machine type)
+    │   ├── Streaming/StreamingScreen    Remote desktop via WebView
+    │   └── Profile/ProfileScreen.tsx    Account info + sign out
+    ├── components/
+    │   ├── agent/AgentCard.tsx          Agent list item with state badge
+    │   ├── common/ConnectionBadge.tsx   Live WS connection indicator
+    │   └── terminal/EventItem.tsx       Chat bubble per event type
+    ├── types/index.ts                   All TypeScript types (mirrors backend)
+    └── utils/
+        ├── theme.ts                     Colors, spacing, fonts
+        └── agentState.ts               State → color/label helpers
 ```
 
 ---
 
-## Run It Now (iOS Simulator)
+## Auth Flow
 
-### 1. Prerequisites
+Ariana uses **GitHub OAuth only** — no username/password, no API key login.
+
+```
+App → GET /api/auth/sign-in/github?deep_link=true
+    → returns { url: "https://github.com/login/oauth/authorize?..." }
+
+App opens that GitHub URL via openAuthSessionAsync()
+    → User authorizes on GitHub
+    → Ariana backend receives callback
+    → Redirects to ariana-ide://auth?token=<jwt>
+
+openAuthSessionAsync intercepts the deep link → returns result.url
+    → App extracts token
+    → GET /api/auth/session (verify + get user)
+    → Stored in AsyncStorage, WS connected
+```
+
+**Fallback (Expo Go / if auto fails):** tap "Have a token?" → browser opens GitHub sign-in → after auth, copy the token from the URL bar → paste it in the app.
+
+> The Anthropic API key / Claude credentials are configured **after** login via the agent creation flow on the backend — not at login time.
+
+---
+
+## Run It (iOS Simulator)
+
+### Prerequisites
 
 ```bash
-# Node.js 18+ (you have 24 ✓)
-# Xcode 14+ (you have Xcode 26 ✓)
-
-# Install CocoaPods (needed for iOS native modules)
-sudo gem install cocoapods
-# OR if you can't sudo:
+# Xcode must be installed (you have it ✓)
+# Install CocoaPods
 brew install cocoapods
 ```
 
-### 2. Install dependencies
+### Start
 
 ```bash
 cd ~/Desktop/ariana-mobile
 npm install
+npx expo start --clear
+# press i → iOS Simulator
 ```
 
-### 3. Start the dev server
+Sign in with GitHub. The auto flow works in Simulator. On a physical device with Expo Go, use the "paste token" fallback.
 
-```bash
-npx expo start
-```
+---
 
-Press **`i`** to open in iOS simulator.
+## What Still Needs Work
 
-### 4. Sign in
+### For Expo Go (physical device)
+- `openAuthSessionAsync` with custom URL schemes is unreliable in Expo Go
+- **Workaround**: use the paste-token fallback (tap "Have a token?")
+- **Proper fix**: build a development client with `eas build --profile development`
 
-Use your Anthropic API key or hit "Continue anonymously" to browse Ariana.
+### Not yet implemented
+- [ ] GitHub Issues mentions in prompts
+- [ ] Port forwarding UI (view public ports agents expose)
+- [ ] Diff viewer (diffs.com integration)
+- [ ] Push notifications for agent state changes
+- [ ] iPad split-view layout
+- [ ] Automation management
+- [ ] Environment variables editor
 
 ---
 
 ## Build for App Stores
 
-### Setup EAS (one time)
+### One-time setup
 
 ```bash
 npm install -g eas-cli
-eas login          # create account at expo.dev if needed
+eas login
 eas build:configure
 ```
 
-### iOS (App Store)
+Fill in `eas.json` with your Apple ID, App Store Connect app ID, team ID, and Google Play service account.
+
+### Build + submit
 
 ```bash
-# Build
-npm run build:ios
+# iOS App Store
+eas build --platform ios --profile production
+eas submit --platform ios
 
-# Submit to App Store Connect
-npm run submit:ios
+# Google Play
+eas build --platform android --profile production
+eas submit --platform android
 ```
 
-EAS handles signing, provisioning profiles, and notarization automatically.
+EAS handles all signing, provisioning profiles, and certificates automatically.
 
-### Android (Google Play)
-
-```bash
-# Build AAB (Android App Bundle)
-npm run build:android
-
-# Submit to Play Store
-npm run submit:android
-```
-
-Fill in your Apple/Google credentials in `eas.json` before submitting.
+### Why Expo Go auth doesn't work fully
+Expo Go's native binary doesn't register the `ariana-ide://` URL scheme, so `ASWebAuthenticationSession` can't complete the OAuth redirect back to the app. A production build (via EAS) registers the scheme and everything works in one tap.
 
 ---
 
-## Key decisions
+## Key Technical Decisions
 
-- **Expo managed workflow** — no ejecting needed, EAS handles native builds
-- **WebSocket service** ported 1:1 from the Tauri desktop app — same channel/subscription model
-- **Zustand** stores reused exactly, with AsyncStorage instead of Tauri's store
-- **Remote desktop** via WebView → Moonlight stream URL (HTTP from agent VPS)
-- **No xterm.js** — native `FlatList` + custom `EventItem` bubbles replace it for mobile
-- **Offline-first** — drafts, auth token, model selection all persisted with AsyncStorage
-
----
-
-## What's next
-
-- [ ] GitHub OAuth flow (deep link callback)
-- [ ] Push notifications for agent state changes (via Expo Notifications)
-- [ ] Port forwarding UI (view public ports opened by agents)
-- [ ] Diff viewer (integrate diffs.com)
-- [ ] Haptic feedback on agent state changes
-- [ ] iPad layout (split view: agent list + chat)
+| Decision | Reason |
+|----------|--------|
+| Expo managed workflow | EAS handles native builds + app store submission without ejecting |
+| WebSocket service ported 1:1 | Same subscription/channel protocol as desktop, same reconnect logic |
+| Zustand + AsyncStorage | Same stores as desktop, swapped Tauri storage for AsyncStorage |
+| Native FlatList instead of xterm.js | xterm.js is browser-only; native list is smoother on mobile |
+| WebView for remote desktop | Moonlight stream is HTTP — WebView handles it without native video setup |
+| `ariana-ide` + `ariana` both registered | Backend deep links use `ariana-ide://`; we register both schemes |
